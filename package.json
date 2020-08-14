@@ -1,0 +1,19 @@
+{
+  "name": "roundclaim",
+  "version": "0.0.1",
+  "description": "",
+  "directories": {
+    "test": "test"
+  },
+  "dependencies": {
+    "chai": "^4.2.0",
+    "ethereum-waffle": "^3.0.2",
+    "ethers": "^5.0.8"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "buidler test"
+  },
+  "author": "",
+  "license": "ISC"
+}

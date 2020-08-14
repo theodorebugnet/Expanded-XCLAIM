@@ -1,5 +1,9 @@
-//SPDX-License-Identifier: MIT
+//SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity >= 0.5.0 < 0.7.0;
+
+import {Parser} from '@interlay/btc-relay-sol/contracts/Parser.sol';
+import {Relay} from '@interlay/btc-relay-sol/contracts/Relay.sol';
+import {ExchangeOracle} from './ExchangeOracle.sol';
 
 contract Roundclaim {
     event UserRegistration(
@@ -25,6 +29,8 @@ contract Roundclaim {
 
     address public owner;
 
+    ExchangeOracle exchangeOracle;
+
     uint public roundLength; // seconds between rounds
     uint public round;
 
@@ -34,6 +40,7 @@ contract Roundclaim {
         owner = msg.sender;
         roundLength = 84600;
         round = 0;
+        exchangeOracle = new ExchangeOracle();
     }
 
     struct User {
@@ -51,18 +58,13 @@ contract Roundclaim {
 
     struct Vault {
         uint freeCollateral;
+        bool registered = true;
     }
 
     mapping (address => User) public users;
     mapping (address => Vault) public vaults;
 //    mapping (uint => uint) usersByVault;
     
-    function btcToEth(uint btc) internal returns (uint) {
-        //TODO: this is mock
-        uint exchangeRate = 2;
-        return btc * exchangeRate;
-    }
-
     modifier senderVaultHasUser(address user) {
         require(users[user].vault == msg.sender, "User does not correspond to this vault");
         _;
@@ -95,7 +97,10 @@ contract Roundclaim {
     }
 
     function registerVault() public {
-        vaults[msg.sender] = Vault({freeCollateral: 0});
+        vaults[msg.sender] = Vault({
+            freeCollateral: 0,
+            registered: true
+        });
     }
 
     /******** Vault collateral ********/
@@ -115,7 +120,7 @@ contract Roundclaim {
     function lockCollateral(address user, uint amount) payable public
     senderVaultHasUser(user) {
         vaults[msg.sender].freeCollateral += msg.value;
-        uint uncollateralised = btcToEth(users[user].balance) - users[user].collateralisation;
+        uint uncollateralised = exchangeOracle.btcToEth(users[user].balance) - users[user].collateralisation;
         if (amount > uncollateralised) {
             amount = uncollateralised;
         }
@@ -134,20 +139,37 @@ contract Roundclaim {
     }
 
     function burnTokens(uint btcAmount) public {
-        require(btcToEth(amount) <= users[msg.sender].balance, "Burn request exceeds account balance");
-        users[msg.sender].balance -= amount;
+        require(exchangeOracle.btcToEth(btcAmount) <= users[msg.sender].balance, "Burn request exceeds account balance");
+        users[msg.sender].balance -= btcAmount;
     }
 
-    function reimburse(address user, uint amount) internal {
-        require(amount <= users[user].collateralisation, "Insufficient collateral to reimburse");
-        users[user].balance 
+    function reimburse(address user, uint btcAmount) internal {
+        uint ethAmount = exchangeOracle.btcToEth(btcAmount);
+        require(ethAmount <= users[user].collateralisation, "Insufficient collateral to reimburse");
+        users[user].balance -= btcAmount;
+        users[user].collateralisation -= ethAmount;
+        (bool success, ) = user.call{value: ethAmount}("");
+        require(success, "Transfer to user failed.");
     }
 
     function checkCheckpointOutput(address user) public view
     returns (uint amount) {
     }
 
-    function issueTokens(bytes memory btxLockingTx) public {
+    function issueTokens(
+        bytes memory btcLockingTx,
+        uint32 height,
+        uint256 index,
+        bytes memory header,
+        bytes memory proof
+    ) public {
+        bytes32 txId; //TODO: calc
+        //TODO: validate btcLockingTx output script:
+        //  - get output script
+        //  - get value
+        //  - get sig
+        bool validTx = Relay.verifyTx(height, index, txId, header, proof, 6, false);
+        require(validTx, "An invalid transaction was used");
         //validate transaction, get output value
         //add balance to user
         //add balance to totalSupply
