@@ -133,11 +133,24 @@ contract Roundclaim {
         vaults[msg.sender].freeCollateral += amount;
     }
 
+    function burnTokens(uint btcAmount) public {
+        require(btcToEth(amount) <= users[msg.sender].balance, "Burn request exceeds account balance");
+        users[msg.sender].balance -= amount;
+    }
+
+    function reimburse(address user, uint amount) internal {
+        require(amount <= users[user].collateralisation, "Insufficient collateral to reimburse");
+        users[user].balance 
+    }
+
     function checkCheckpointOutput(address user) public view
     returns (uint amount) {
     }
 
     function issueTokens(bytes memory btxLockingTx) public {
+        //validate transaction, get output value
+        //add balance to user
+        //add balance to totalSupply
     }
 
     /******** Viewers ********/
