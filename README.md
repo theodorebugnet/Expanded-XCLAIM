@@ -8,8 +8,9 @@ The smart contract is currently in progress. A sample vault implementation will 
 * Implement majority of smart contract, including checkpoint transaction verification
 * Figure out technical details on and initiate implementation of vault and client protocols, including generation of e.g. issue and checkpoint transactions
 #### Friday update
-* Issue transaction verification in progress; currently investigating best way of validating segwit. Checkpoint verification will mirror issue verification and should not pose a problem.
+* Issue transaction verification in progress; currently working on script validation. Checkpoint verification will mirror issue verification and should not pose a problem.
 * Experimenting with vault implementation and building transactions, assuming library/RPC cooperates no significant issues are foreseen
+* TODO: reorganise source into a better layout
 ## Week 24-28 Aug
 * Finalise implementation for vault and client. Target: functional demo
 * Report: revise protocol section to match any details ironed out during implementation.
