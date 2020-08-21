@@ -1,14 +1,15 @@
 const bre = require("@nomiclabs/buidler");
 
-async function main() {
-  // Buidler always runs the compile task when running scripts through it. 
-  // If this runs in a standalone fashion you may want to call compile manually 
-  // to make sure everything is compiled
-  // await bre.run('compile');
+const relayAddress = "0x78A389B693e0E3DE1849F34e70bf4Bcb57F0F2bb";
 
-  // We get the contract to deploy
+async function main() {
+  //deploy mock oracle
+  const ExchangeOracle = await ethers.getContractFactory("ExchangeOracle");
+  const oracle = await ExchangeOracle.deploy();
+
+  //create roundclaim
   const Roundclaim = await ethers.getContractFactory("Roundclaim");
-  const roundclaim = await Roundclaim.deploy();
+  const roundclaim = await Roundclaim.deploy(relayAddress, oracle.address);
 
   await roundclaim.deployed();
 

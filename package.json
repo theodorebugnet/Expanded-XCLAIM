@@ -6,11 +6,18 @@
     "test": "test"
   },
   "dependencies": {
+    "@interlay/bitcoin-spv-sol": "^3.2.2",
+    "@interlay/btc-relay-sol": "^0.3.9",
+    "@summa-tx/bitcoin-spv-sol": "^4.0.1",
     "chai": "^4.2.0",
     "ethereum-waffle": "^3.0.2",
     "ethers": "^5.0.8"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "@nomiclabs/buidler": "^1.4.4",
+    "@nomiclabs/buidler-ethers": "^2.0.0",
+    "@nomiclabs/buidler-waffle": "^2.0.0"
+  },
   "scripts": {
     "test": "buidler test"
   },
