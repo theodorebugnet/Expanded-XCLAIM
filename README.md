@@ -1,7 +1,7 @@
 # Expanded XCLAIM
-This is a heavily WIP implementation.
+WIP implementation.
 
-The smart contract is currently in progress. A sample vault implementation will follow.
+The smart contract is currently in progress. Sample vault and client implementations will follow.
 
 # Current schedule:
 ## Week 17-21 Aug
