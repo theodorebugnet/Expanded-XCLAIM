@@ -43,6 +43,13 @@ contract XclaimCommit {
         uint amount
     );
 
+    /// Fired when a user burns some of their tokens in order to redeem the backing funds.
+    event Redeem(
+        address indexed addr,
+        uint amount,
+        uint round
+    );
+
     address public owner;
 
     ExchangeOracle exchangeOracle;
@@ -50,8 +57,10 @@ contract XclaimCommit {
     Relay relay;
 
     uint public roundLength; // seconds between rounds
+    uint public securityPeriod; // during which users due for a checkpoint must be collateralised
     uint public round;
     uint public roundDueAt;
+//    uint public redeemTimeout; // in rounds
 
     uint public totalSupply;
 
@@ -77,13 +86,33 @@ contract XclaimCommit {
 
     mapping (address => User) public users;
     mapping (address => Vault) public vaults;
-//    mapping (uint => uint) usersByVault;
 
+    // prevent replay attacks
     mapping (bytes32 => bool) public usedTransactions;
 
+    // validating Redeem vault misbehaviour
+    struct RedeemRequest {
+        address user;
+        uint amount;
+    }
+    uint redeemUid;
+    mapping (uint => RedeemRequest) redeemRequests;
+
+    /// Initialises values, and sets addresses for auxilliary contracts
+    constructor(address relayAddr, address exchangeOracleAddr, address validatorAddr) public {
+        owner = msg.sender;
+        roundLength = 12 * 60 * 60; // half a day
+        round = 0;
+        roundDueAt = block.timestamp + roundLength; // schedule next round
+
+        exchangeOracle = ExchangeOracle(exchangeOracleAddr);
+        relay = Relay(relayAddr);
+        validator = Validator(validatorAddr);
+    }
+
     /// When a vault performs an operation on a user, revert unless the user is registered with that vault.
-    modifier senderVaultHasUser(address user) {
-        require(users[user].vault == msg.sender, "User does not correspond to this vault");
+    modifier vaultHasUser(address vault, address user) {
+        require(users[user].vault == vault, "User does not correspond to this vault");
         _;
     }
 
@@ -107,18 +136,6 @@ contract XclaimCommit {
             }
         }
         _;
-    }
-
-    /// Initialises values, and sets addresses for auxilliary contracts
-    constructor(address relayAddr, address exchangeOracleAddr, address validatorAddr) public {
-        owner = msg.sender;
-        roundLength = 84600;
-        round = 0;
-        roundDueAt = block.timestamp + roundLength; // schedule next round
-
-        exchangeOracle = ExchangeOracle(exchangeOracleAddr);
-        relay = Relay(relayAddr);
-        validator = Validator(validatorAddr);
     }
 
     /******** Registration ********/
@@ -218,7 +235,7 @@ contract XclaimCommit {
     /// **Called by:** the vault
     function lockCollateral(address user, uint amount)
     payable public
-    senderVaultHasUser(user)
+    vaultHasUser(msg.sender, user)
     {
         vaults[msg.sender].freeCollateral += msg.value;
         uint uncollateralised = exchangeOracle.btcToEth(users[user].balance) - users[user].collateralisation;
@@ -231,15 +248,15 @@ contract XclaimCommit {
     }
 
     /// Helper function used to unlock vault collateral locked against a user.
-    function releaseCollateral(address user, uint amount)
+    function releaseCollateral(address vault, address user, uint amount)
     internal
-    senderVaultHasUser(user)
+    vaultHasUser(vault, user)
     {
         if (amount > users[user].collateralisation) {
             amount = users[user].collateralisation;
         }
         users[user].collateralisation -= amount;
-        vaults[msg.sender].freeCollateral += amount;
+        vaults[vault].freeCollateral += amount;
     }
 
     /******** Token lifecycle ********/
@@ -248,12 +265,17 @@ contract XclaimCommit {
     /// User must then proceed with the appropriate steps to redeem or recover
     /// their backing funds.
     /// **Called by:** the user
+    /// @return the ID of this redeem request (to be used later to release vault collateral or reimburse the user)
     function burnTokens(uint btcAmount)
     public
+    returns (uint)
     {
         require(exchangeOracle.btcToEth(btcAmount) <= users[msg.sender].balance, "Burn request exceeds account balance");
         users[msg.sender].balance -= btcAmount;
         totalSupply -= btcAmount;
+        redeemRequests[++redeemUid] = RedeemRequest({ user: msg.sender, amount: btcAmount });
+        emit Redeem(msg.sender, btcAmount, round);
+        return redeemUid;
     }
 
     /// Helper function which slashes vault collateral and provides it to the user,
@@ -297,8 +319,8 @@ contract XclaimCommit {
         // get txId, check the transaction has been verified
         // to exist on BTC, and check it's not a replay
         bytes32 txId = btcLockingTx.hash256();
-        require(relay.verifyTx(blockHeight, txIndex, txId, blockHeader, merkleProof, 6, false), "Transaction could not be verified to have been included in the blockchain.");
         require(usedTransactions[txId] == false, "Issue request has already been processed for this transaction.");
+        require(relay.verifyTx(blockHeight, txIndex, txId, blockHeader, merkleProof, 6, false), "Transaction could not be verified to have been included in the blockchain.");
 
         // ensure the script is valid for this user, and extract the amount to be issued
         uint outputVal = validator.checkIssueTx(
@@ -319,10 +341,14 @@ contract XclaimCommit {
         emit Issue(msg.sender, outputVal);
     }
 
+    /// Given a BTC transaction and the ID of a token burn, validates that the transaction
+    /// corresponds to the user redeeming the backing funds of the burn request.
+    /// Releases corresponding vault collateral if valid, if any.
+    /// **Called by:** anyone, though usually the vault
     function validateRedeem(
-        address user,
-        uint burnId,
+        uint redeemId,
         bytes memory btcLockingTx,
+        uint64 outputIndex,
         uint32 blockHeight,
         uint256 txIndex,
         bytes memory blockHeader,
@@ -330,8 +356,49 @@ contract XclaimCommit {
     )
     public
     {
+        address user = redeemRequests[redeemId].user;
+
+        // validate TX, check it exists and hasn't already been used
         bytes32 txId = btcLockingTx.hash256();
+        require(usedTransactions[txId] == false, "Redeem request has already been processed for this transaction.");
         require(relay.verifyTx(blockHeight, txIndex, txId, blockHeader, merkleProof, 6, false), "Transaction could not be verified to have been included in the blockchain.");
+
+        // validate output of btcLockingTx (p2wpk)
+        uint outputVal = validator.checkRedeemTx(
+            btcLockingTx,
+            outputIndex,
+            users[user].btcAddress
+        );
+        require (outputVal >= redeemRequests[redeemId].amount, "Incorrect output value for redeem request"); //todo - support partial redeems?
+        
+        // add to replay protection
+        usedTransactions[txId] = true;
+        // release Vault's collateral
+        releaseCollateral(users[user].vault, user, users[user].collateralisation);
+    }
+
+    /// Validates a checkpoint transaction. Releases collateral for involved users.
+    /// Reimburses from collateral for any users for whom the vault misbehaved.
+    /// @param checkpointTransaction the serialisation of the entire checkpoint tx
+    /// @param blockHeight etc. are all inclusion proof items (see Issue).
+    function verifyCheckpoint(
+        bytes memory checkpointTransaction,
+        uint32 blockHeight,
+        uint256 txIndex,
+        bytes memory blockHeader,
+        bytes memory merkleProof
+    )
+    public
+    {
+        // verify txId + inclusion
+        // (parltly in Validator) for each output:
+        // - verify output + corresponding witnessScript like in Issue
+        // - construct recovery TX + verify corresponding signature
+        // - update user accounting: next checkpoint due, etc.; release collateral
+        // - for invalid users, reimburse from collateral
+
+        // then go through users marked as due (when preimage was validated)
+        // reimburse any that are collateralised
     }
 
     /******** Viewers ********/

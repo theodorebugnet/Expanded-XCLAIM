@@ -1,7 +1,7 @@
 ## `XclaimCommit`
 
 
-### `senderVaultHasUser(address user)`
+### `vaultHasUser(address vault, address user)`
 When a vault performs an operation on a user, revert unless the user is registered with that vault.
 
 ### `vaultExists(address vault)`
@@ -16,11 +16,13 @@ Users are of course only affected by rounds where they are scheduled for a check
 ### `constructor(address relayAddr, address exchangeOracleAddr, address validatorAddr)` (public)
 Initialises values, and sets addresses for auxilliary contracts
 
+
 ### `registerUser(bytes20 btcaddr, address vaultaddr, uint16 frequency, bytes32[] hashes)` (public)
 Creates a new user, registered to a given vault (which must exist), and optionally sets
 hashes to use for future hashlocks
 
 *Called by:** the user registering
+
 
 ### `updateHashlist(bytes32[] hashes, uint256[] checkpoints)` (public)
 Updates the future hashes saved for the user, which can both add to the existing list
@@ -32,12 +34,14 @@ or overwrite already set ones (e.g. if the user loses their preimages)
 * hashes: a list of hashes to save
 * checkpoints: a list of checkpoint indices, corresponding 1:1 to the element hash at the same array location. They denote a user's checkpoint counter (with user.checkpointIndex being the next one that will be used).
 
+
 ### `updateFrequency(uint16 newFreq)` (public)
 Allows the user to change their checkpoint frequency. Does not validate with
 the vault - negotiations will happen off-chain (the vault can always refuse service
 in the event of a dispute).
 
 *Called by:** the user
+
 
 ### `registerVault(bytes20 btcaddr)` (public)
 Registers a vault with the given BTC address. No commitment is required; to
@@ -46,16 +50,19 @@ of collateral available in the vault's pool.
 
 *Called by:** the vault
 
+
 ### `topUpCollateralPool()` (public)
 Allows the vault to deposit funds that can be used to collateralise
 (but which are not yet locked)
 
 *Called by:** the vault
 
+
 ### `drainCollateralPool(uint256 amount)` (public)
 Allows the vault to withdraw unlocked collateral funds
 
 *Called by:** the vault
+
 
 ### `lockCollateral(address user, uint256 amount)` (public)
 Locks a specified amount of collateral against a user. Collateral is specified
@@ -65,19 +72,25 @@ necessary over the short time a user is expected to be collateralised).
 
 *Called by:** the vault
 
-### `releaseCollateral(address user, uint256 amount)` (internal)
+
+### `releaseCollateral(address vault, address user, uint256 amount)` (internal)
 Helper function used to unlock vault collateral locked against a user.
 
-### `burnTokens(uint256 btcAmount)` (public)
+
+### `burnTokens(uint256 btcAmount) → uint256` (public)
 Destroys the amount of tokens requested by the users.
 User must then proceed with the appropriate steps to redeem or recover
 their backing funds.
 
 *Called by:** the user
 
+####Returns:
+* the: ID of this redeem request (to be used later to release vault collateral or reimburse the user)
+
 ### `reimburse(address user, uint256 btcAmount)` (internal)
 Helper function which slashes vault collateral and provides it to the user,
 burning a corresponding amount of user tokens.
+
 
 ### `issueTokens(bytes btcLockingTx, bytes witnessScript, uint64 outputIndex, uint32 blockHeight, uint256 txIndex, bytes blockHeader, bytes merkleProof)` (public)
 Given a valid Issue transaction on BTC, credits the user with the corresponding amount
@@ -98,10 +111,30 @@ the hashlock is not validated.
 * blockHeader: the header of the transaction's block
 * merkleProof: the merkle proof of the transaction's inclusion it its block (intermediate hashes in the tree)
 
+
+### `validateRedeem(uint256 redeemId, bytes btcLockingTx, uint64 outputIndex, uint32 blockHeight, uint256 txIndex, bytes blockHeader, bytes merkleProof)` (public)
+Given a BTC transaction and the ID of a token burn, validates that the transaction
+corresponds to the user redeeming the backing funds of the burn request.
+Releases corresponding vault collateral if valid, if any.
+
+*Called by:** anyone, though usually the vault
+
+
+### `verifyCheckpoint(bytes checkpointTransaction, uint32 blockHeight, uint256 txIndex, bytes blockHeader, bytes merkleProof)` (public)
+Validates a checkpoint transaction. Releases collateral for involved users.
+Reimburses from collateral for any users for whom the vault misbehaved.
+
+####Arguments:
+* checkpointTransaction: the serialisation of the entire checkpoint tx
+* blockHeight: etc. are all inclusion proof items (see Issue).
+
+
 ### `balanceOf(address account) → uint256` (public)
 ****** Viewers *******
 
+
 ### `getNextHash(address user) → bytes32` (public)
+
 
 
 
@@ -119,4 +152,7 @@ Fired on user funds having collateral set.
 
 ### `Issue(address addr, uint256 amount)`
 Fired when a user successfully executes Issue.
+
+### `Redeem(address addr, uint256 amount, uint256 round)`
+Fired when a user burns some of their tokens in order to redeem the backing funds.
 

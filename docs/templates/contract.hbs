@@ -13,6 +13,10 @@
 ####Arguments:
 {{#each natspec.params}} 
 * {{{param}}}: {{{description}}}{{/each}}{{/if}}
+{{#if natspec.returns}}
+####Returns:
+{{#each natspec.returns}} 
+* {{{param}}}: {{{description}}}{{/each}}{{/if}}
 
 {{/each}}
 

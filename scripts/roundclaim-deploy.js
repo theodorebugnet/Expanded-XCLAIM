@@ -1,17 +1,21 @@
 const bre = require("@nomiclabs/buidler");
 
-const relayAddress = "0x78A389B693e0E3DE1849F34e70bf4Bcb57F0F2bb";
+const realRelayAddress = "0x78A389B693e0E3DE1849F34e70bf4Bcb57F0F2bb";
 
 async function main() {
   //deploy mock oracle
   const ExchangeOracle = await ethers.getContractFactory("ExchangeOracle");
   const oracle = await ExchangeOracle.deploy();
+  //deploy mock relay as well
+  const Relay = await ethers.getContractFactory("Relay");
+  const mockRelay = await Relay.deploy();
+
 
   //create XCC contract (including auxilliary contracts)
   const Validator = await ethers.getContractFactory("Validator");
   const validator = await Validator.deploy();
   const XclaimCommit = await ethers.getContractFactory("XclaimCommit");
-  const xclaimCommit = await XclaimCommit.deploy(relayAddress, oracle.address, validator.address);
+  const xclaimCommit = await XclaimCommit.deploy(mockRelay.address, oracle.address, validator.address);
 
   await xclaimCommit.deployed();
 

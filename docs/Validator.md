@@ -13,11 +13,19 @@ Validates the issue transaction, ensuring the output script is valid and extract
 * vaultBtcAddress: the vault's address on the BTC chain
 * userLocktime: the value that the timelock should have, based on the round length and user checkpoint frequency
 
+
+### `extractOutputInfo(bytes btcTx, uint64 outputIndex) → bytes script, uint256 outputValue` (internal)
+Helper method that extracts the script and the value of the output at the given index
+from the given transaction.
+
+
 ### `checkpointOutputScriptValid(bytes outputScript, bytes witnessScript, bytes20 userBtc, bytes20 vaultBtc, uint256 userLocktime) → bool` (internal)
 Checks the validity of the transaction's output script, to ensure the locking conditions
 are correct
 
-### `checkpointRecoveryValid() → bool` (public)
+
+### `checkRedeemTx(bytes btcLockingTx, uint64 outputIndex, bytes20 userBtcAddress) → uint256` (public)
+
 
 
 

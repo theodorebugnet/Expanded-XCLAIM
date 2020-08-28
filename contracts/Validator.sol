@@ -25,28 +25,54 @@ contract Validator {
     public pure
     returns (uint)
     {
-        //get the output
-        (, uint lenIn) = Parser.extractInputLength(btcLockingTx); //find start of outputs data
-        bytes memory outputs = btcLockingTx.slice(lenIn, btcLockingTx.length - lenIn);
-        bytes memory output = Parser.extractOutputAtIndex(outputs, outputIndex);
+        // get script and output's value
+        (bytes memory script, uint val) = extractOutputInfo(btcLockingTx, outputIndex);
 
-        //is script valid?
-        bytes memory script = Parser.extractOutputScript(output);
+        // validate issue script
         require(checkpointOutputScriptValid(
             script, witnessScript, userBtcAddress, vaultBtcAddress, userLocktime),
                 "Submitted transaction output does not constitute a valid locking of backing funds.");
 
-        //everything valid so far, get output value and return
-        return Parser.extractOutputValue(output);
+        //everything valid - return the value
+        return val;
+    }
+
+    /// Helper method that extracts the script and the value of the output at the given index
+    /// from the given transaction.
+    function extractOutputInfo(
+        bytes memory btcTx,
+        uint64 outputIndex
+    )
+    internal pure
+    returns (bytes memory script, uint outputValue)
+    {
+        //get the output
+        (, uint lenIn) = Parser.extractInputLength(btcTx); //find start of outputs data
+        bytes memory outputs = btcTx.slice(lenIn, btcTx.length - lenIn);
+        bytes memory output = Parser.extractOutputAtIndex(outputs, outputIndex);
+
+        script = Parser.extractOutputScript(output);
+        outputValue = Parser.extractOutputValue(output);
     }
 
     /// Checks the validity of the transaction's output script, to ensure the locking conditions
     /// are correct
-    function checkpointOutputScriptValid(bytes memory outputScript, bytes memory witnessScript, bytes20 userBtc, bytes20 vaultBtc, uint userLocktime)
+    function checkpointOutputScriptValid(
+        bytes memory outputScript,
+        bytes memory witnessScript,
+        bytes20 userBtc,
+        bytes20 vaultBtc,
+        uint userLocktime
+    )
     internal pure
     returns (bool)
     {
         // CURRENTLY MOCK
+
+        //Script:
+        // vaultBtc OP_CHECKSIGVERIFY userBtc OP_CHECKSIG OP_IFDUP OP_NOTIF
+        //      userLocktime OP_CHECKSEQUENCEVERIFY
+        // OP_ENDIF
 
         // does the script hash from the output match the witness script?
         // is the script of the right format? Get sigs and locktime.
@@ -56,13 +82,17 @@ contract Validator {
         return true;
     }
 
-    function checkpointRecoveryValid()
+    function checkRedeemTx(
+        bytes memory btcLockingTx,
+        uint64 outputIndex,
+        bytes20 userBtcAddress
+    )
     public pure
-    returns (bool)
+    returns (uint)
     {
-        // TODO
-
-        // 
-        return true;
+        (bytes memory script, uint val) = extractOutputInfo(btcLockingTx, outputIndex);
+        // CURRENTLY MOCK
+        // validate the p2wpk script to ensure output address == userBtcAddress
+        return val;
     }
 }
