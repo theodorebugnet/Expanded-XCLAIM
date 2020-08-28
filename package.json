@@ -1,5 +1,5 @@
 {
-  "name": "roundclaim",
+  "name": "xclaimcommit",
   "version": "0.0.1",
   "description": "",
   "directories": {
@@ -11,7 +11,8 @@
     "@summa-tx/bitcoin-spv-sol": "^4.0.1",
     "chai": "^4.2.0",
     "ethereum-waffle": "^3.0.2",
-    "ethers": "^5.0.8"
+    "ethers": "^5.0.8",
+    "solidity-docgen": "^0.5.4"
   },
   "devDependencies": {
     "@nomiclabs/buidler": "^1.4.4",
@@ -19,7 +20,9 @@
     "@nomiclabs/buidler-waffle": "^2.0.0"
   },
   "scripts": {
-    "test": "buidler test"
+    "test": "buidler test",
+    "docs": "solidity-docgen -t docs/templates",
+    "localdeploy": "buidler run scripts/roundclaim-deploy.js"
   },
   "author": "",
   "license": "ISC"

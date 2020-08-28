@@ -1,0 +1,23 @@
+## `{{name}}`
+{{{natspec.userdoc}}}
+
+{{#each ownModifiers}}
+### `{{name}}({{args}})`
+{{{natspec.userdoc}}}
+
+{{/each}}
+
+{{#each ownFunctions}}
+### `{{name}}({{args}}){{#if outputs}} → {{outputs}}{{/if}}` ({{visibility}})
+{{{natspec.userdoc}}}{{#if natspec.params}}
+####Arguments:
+{{#each natspec.params}} 
+* {{{param}}}: {{{description}}}{{/each}}{{/if}}
+
+{{/each}}
+
+{{#each ownEvents}}
+### `{{name}}({{args}})`
+{{{natspec.userdoc}}}
+
+{{/each}}

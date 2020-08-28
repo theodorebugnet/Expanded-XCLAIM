@@ -7,13 +7,15 @@ async function main() {
   const ExchangeOracle = await ethers.getContractFactory("ExchangeOracle");
   const oracle = await ExchangeOracle.deploy();
 
-  //create roundclaim
-  const Roundclaim = await ethers.getContractFactory("Roundclaim");
-  const roundclaim = await Roundclaim.deploy(relayAddress, oracle.address);
+  //create XCC contract (including auxilliary contracts)
+  const Validator = await ethers.getContractFactory("Validator");
+  const validator = await Validator.deploy();
+  const XclaimCommit = await ethers.getContractFactory("XclaimCommit");
+  const xclaimCommit = await XclaimCommit.deploy(relayAddress, oracle.address, validator.address);
 
-  await roundclaim.deployed();
+  await xclaimCommit.deployed();
 
-  console.log("Roundclaim deployed to:", roundclaim.address);
+  console.log("XclaimCommit deployed to:", xclaimCommit.address);
 }
 
 // We recommend this pattern to be able to use async/await everywhere
