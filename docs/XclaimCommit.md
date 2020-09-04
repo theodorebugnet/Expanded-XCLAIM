@@ -8,16 +8,19 @@ When a vault performs an operation on a user, revert unless the user is register
 Revert if an address does not match any registered vault.
 
 ### `userNotDueForCheckpoint(address user)`
-Ensures that the user is able to carry out normal operations, e.g. trading,
+Checks whether the user is able to carry out normal operations, e.g. trading,
 which are suspended when a round is over until the round's checkpoint is verified.
 Users are of course only affected by rounds where they are scheduled for a checkpoint.
+
+### `roundScheduler()`
+Increments round if 
 
 
 ### `constructor(address relayAddr, address exchangeOracleAddr, address validatorAddr)` (public)
 Initialises values, and sets addresses for auxilliary contracts
 
 
-### `registerUser(bytes20 btcaddr, address vaultaddr, uint16 frequency, bytes32[] hashes)` (public)
+### `registerUser(bytes32 btcKey, address vaultaddr, uint16 frequency, bytes32[] hashes)` (public)
 Creates a new user, registered to a given vault (which must exist), and optionally sets
 hashes to use for future hashlocks
 
@@ -43,7 +46,7 @@ in the event of a dispute).
 *Called by:** the user
 
 
-### `registerVault(bytes20 btcaddr)` (public)
+### `registerVault(bytes32 btcKey)` (public)
 Registers a vault with the given BTC address. No commitment is required; to
 provide a useful list of vaults, interfaces may wish to sort by e.g. amount
 of collateral available in the vault's pool.
@@ -92,6 +95,10 @@ Helper function which slashes vault collateral and provides it to the user,
 burning a corresponding amount of user tokens.
 
 
+### `transfer(address recipient, uint256 amount)` (public)
+
+
+
 ### `issueTokens(bytes btcLockingTx, bytes witnessScript, uint64 outputIndex, uint32 blockHeight, uint256 txIndex, bytes blockHeader, bytes merkleProof)` (public)
 Given a valid Issue transaction on BTC, credits the user with the corresponding amount
 of backed tokens.
@@ -120,12 +127,22 @@ Releases corresponding vault collateral if valid, if any.
 *Called by:** anyone, though usually the vault
 
 
-### `verifyCheckpoint(bytes checkpointTransaction, uint32 blockHeight, uint256 txIndex, bytes blockHeader, bytes merkleProof)` (public)
+### `validateHashlockPreimage(address user, bytes32 preimage) → bool` (public)
+Validates whether a given preimage corresponds to a user's next hashlock.
+
+####Arguments:
+* user: the user to check
+* preimage: the claimed preimage for the haslock
+
+
+### `verifyCheckpoint(bytes checkpointTransaction, bytes[] witnessScripts, bytes[] recoverySignatures, address[] usersIncluded, uint32 blockHeight, uint256 txIndex, bytes blockHeader, bytes merkleProof)` (public)
 Validates a checkpoint transaction. Releases collateral for involved users.
 Reimburses from collateral for any users for whom the vault misbehaved.
 
 ####Arguments:
 * checkpointTransaction: the serialisation of the entire checkpoint tx
+* witnessScripts: the witness scripts matching the P2WSH outputs in the checkpoint, in an order exactly corresponding to the transaction outputs order
+* recoverySignatures: the signature data matching the recovery transactions for every output in the checkpoint, again in a matching order
 * blockHeight: etc. are all inclusion proof items (see Issue).
 
 
@@ -137,15 +154,42 @@ Reimburses from collateral for any users for whom the vault misbehaved.
 
 
 
+### `getHashAt(address user, uint256 checkpointIndex) → bytes32` (public)
 
-### `UserRegistration(address addr, address vault, bytes20 btcaddr)`
+
+
+### `getRevealedPreimageOf(address user) → bytes32` (public)
+
+
+
+### `getCheckpointIndex(address user) → uint256` (public)
+
+
+
+### `getCollateralisationOf(address user) → uint256` (public)
+
+
+
+### `getFrequencyOf(address user) → uint16` (public)
+
+
+
+### `checkCollateralPoolOf(address vault) → uint256` (public)
+
+
+
+
+### `UserRegistration(address addr, address vault, bytes32 btcKey)`
 Notifies of a new user registering at a given vault.
 
-### `VaultRegistration(address addr, bytes20 btcaddr)`
+### `VaultRegistration(address addr, bytes32 btcKey)`
 Notifies of a new vault being registered.
 
 ### `UserHashlock(address addr, uint256 checkpointIndex, bytes32 hash)`
 Fired on every change of any of a user's saved hashlocks digests (including setting new ones).
+
+### `UserFrequencyChange(address user, uint16 newFreq)`
+
 
 ### `UserCollateralised(address addr, uint256 amount)`
 Fired on user funds having collateral set.
@@ -155,4 +199,10 @@ Fired when a user successfully executes Issue.
 
 ### `Redeem(address addr, uint256 amount, uint256 round)`
 Fired when a user burns some of their tokens in order to redeem the backing funds.
+
+### `HashlockReveal(address user, uint256 round, bytes32 preimage)`
+Fires when the hashlock for the next round has its preimage revealed
+
+### `Transfer(address from, address to, uint256 amount)`
+Fired when a user transfers tokens to another user
 
