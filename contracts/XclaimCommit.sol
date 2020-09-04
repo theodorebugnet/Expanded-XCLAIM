@@ -6,11 +6,15 @@ import "@nomiclabs/buidler/console.sol";
 
 import {Relay} from '@interlay/btc-relay-sol/contracts/Relay.sol';
 import {BTCUtils} from '@interlay/bitcoin-spv-sol/contracts/BTCUtils.sol';
+import {BytesLib} from '@interlay/bitcoin-spv-sol/contracts/BytesLib.sol';
+import {Parser} from '@interlay/btc-relay-sol/contracts/Parser.sol';
+
 import {ExchangeOracle} from './ExchangeOracle.sol';
 import {Validator} from './Validator.sol';
 
 contract XclaimCommit {
     using BTCUtils for bytes;
+    using BytesLib for bytes;
 
     /* Events */
 
@@ -58,6 +62,14 @@ contract XclaimCommit {
         uint round
     );
 
+    /// Fires when the hashlock for the next round has its preimage revealed
+    event HashlockReveal(
+        address indexed user,
+        uint indexed round,
+        bytes32 preimage
+    );
+
+    /// Fired when a user transfers tokens to another user
     event Transfer(
         address indexed from,
         address indexed to,
@@ -72,6 +84,7 @@ contract XclaimCommit {
 
     uint public roundLength; // seconds between rounds
     uint public securityPeriod; // during which users due for a checkpoint must be collateralised
+    uint public timelockLeniency; // for fluctuations in block length etc.
     uint public round;
     uint public roundDueAt;
 //    uint public redeemTimeout; // in rounds
@@ -83,13 +96,12 @@ contract XclaimCommit {
         uint balance;
         uint collateralisation;
         uint16 frequency;
-        bytes32 recSig1;
-        bytes32 recSig2;
-        bytes9  recSig3;
-        bytes16 preimage;
+        bytes32 prevCheckpointTxid;
+        bytes recoverySig;
+        bytes32 preimage;
         address vault;
         mapping(uint => bytes32) hashlist;
-        uint64 checkpointIndex; //used to keep track of current hashlock
+        uint64 checkpointIndex; //last checkpoint transaction - used to keep track of current hashlock
         uint nextRoundDue;
     }
 
@@ -118,6 +130,7 @@ contract XclaimCommit {
         roundLength = 12 * 60 * 60; // half a day
         round = 0;
         roundDueAt = block.timestamp + roundLength; // schedule next round
+        timelockLeniency = 600; // 10 minutes += on the scheduled round
 
         exchangeOracle = ExchangeOracle(exchangeOracleAddr);
         relay = Relay(relayAddr);
@@ -329,11 +342,12 @@ contract XclaimCommit {
     roundScheduler
     userNotDueForCheckpoint(msg.sender)
     {
-        //require(users[msg.sender].preimage != 0x0, "Must reveal hashlock preimage before initiating Transfer.");
+        require(users[msg.sender].preimage != 0x0, "Must reveal hashlock preimage before initiating Transfer.");
         require(users[msg.sender].balance >= amount, "Insufficient balance to cover transfer.");
         require(users[recipient].btcKey != 0x0, "Recipient is not registered."); //TODO - auto-register recipient with default values
         users[msg.sender].balance -= amount;
         users[recipient].balance += amount;
+        emit Transfer(msg.sender, recipient, amount);
     }
 
     /// Given a valid Issue transaction on BTC, credits the user with the corresponding amount
@@ -380,6 +394,8 @@ contract XclaimCommit {
             roundDueAt + users[msg.sender].frequency * roundLength // when should the next checkpoint be?
         );
         users[msg.sender].balance += outputVal;
+        users[msg.sender].nextRoundDue = round + users[msg.sender].frequency; // schedule the next checkpoint
+        users[msg.sender].prevCheckpointTxid = txId;
         totalSupply += outputVal;
 
         //add to replay protection records
@@ -426,6 +442,24 @@ contract XclaimCommit {
         releaseCollateral(users[user].vault, user, users[user].collateralisation);
     }
 
+    /// Validates whether a given preimage corresponds to a user's next hashlock.
+    /// @param user the user to check
+    /// @param preimage the claimed preimage for the haslock
+    function validateHashlockPreimage(address user, bytes32 preimage)
+    public
+    returns (bool)
+    {
+        // check if hash digest matches previous checkpoint's hashlock
+        if (BTCUtils.hash256(abi.encodePacked(preimage)) != users[user].hashlist[users[user].checkpointIndex]) {
+            revert("Invalid preimage!");
+        } else {
+            // save it for public use
+            users[user].preimage = preimage;
+            emit HashlockReveal(user, round, preimage);
+            return true;
+        }
+    }
+
     /// Validates a checkpoint transaction. Releases collateral for involved users.
     /// Reimburses from collateral for any users for whom the vault misbehaved.
     /// @param checkpointTransaction the serialisation of the entire checkpoint tx
@@ -436,6 +470,7 @@ contract XclaimCommit {
         bytes memory checkpointTransaction,
         bytes[] memory witnessScripts,
         bytes[] memory recoverySignatures,
+        address[] memory usersIncluded,
         uint32 blockHeight,
         uint256 txIndex,
         bytes memory blockHeader,
@@ -444,15 +479,62 @@ contract XclaimCommit {
     public
     roundScheduler
     {
-        // verify txId + inclusion
-        // (partly in Validator) for each output:
-        // - verify output + corresponding witnessScript like in Issue
-        // - construct recovery TX + verify corresponding signature
-        // - update user accounting: next checkpoint due, etc.; release collateral
-        // - for invalid users, reimburse from collateral
+        //This code is ugly because stack limit and contract size limit was met, and there is a lot of state to pass around which makes splitting it into functions non-trivial
+        //TODO: refactor this as much as possible
 
-        // then go through users marked as due (when preimage was validated)
-        // reimburse any that are collateralised
+        // first validate user list
+        for (uint i = 0; i < usersIncluded.length; ++i)
+        {
+            require(users[usersIncluded[i]].nextRoundDue <= round, "An included user is not due yet.");
+        }
+
+        // verify txId + inclusion
+        bytes32 txId = checkpointTransaction.hash256();
+        require(usedTransactions[txId] == false, "Redeem request has already been processed for this transaction.");
+        require(relay.verifyTx(blockHeight, txIndex, txId, blockHeader, merkleProof, 6, false), "Transaction could not be verified to have been included in the blockchain.");
+        (bytes memory outputs, uint numOut) = validator.quickParseCheckpointTx(
+            checkpointTransaction,
+            witnessScripts.length,
+            recoverySignatures.length,
+            usersIncluded.length
+        );
+
+        // loop
+        for (uint i = 0; i < numOut; i++) {
+            address u = usersIncluded[i]; // for convenience
+
+            // validate many things
+            validator.validateUserCheckpointValues(
+                outputs,
+                i,
+                witnessScripts[i],
+                users[u].balance,
+                users[u].btcKey,
+                vaults[users[u].vault].btcKey,
+                roundDueAt - block.timestamp + users[u].frequency * roundLength,
+                timelockLeniency
+            );
+
+            // verify recovery transaction
+            validator.validateRecoverySig(
+                recoverySignatures[i],
+                users[u].hashlist[users[u].checkpointIndex + 1],
+                users[u].btcKey,
+                vaults[users[u].vault].btcKey,
+                users[u].prevCheckpointTxid
+            );
+
+            //valid!
+            // update: cp index, preimage, recsig, previous cp txid; release collateral
+            users[u].checkpointIndex = users[u].checkpointIndex + 1;
+            users[u].preimage = 0x0;
+            users[u].recoverySig = recoverySignatures[i];
+            users[u].prevCheckpointTxid = txId;
+            releaseCollateral(users[u].vault, u, users[u].collateralisation);
+
+            // else reimburse
+            // TODO - improve reimbursing mechanism - change all the reverts to bubbling up errors? or change protocol to allow users to claim reimbursement if they haven't been checkpointed within a certain time?
+        }
     }
 
     /******** Viewers ********/
@@ -476,6 +558,13 @@ contract XclaimCommit {
     returns (bytes32)
     {
         return users[user].hashlist[checkpointIndex];
+    }
+
+    function getRevealedPreimageOf(address user)
+    public view
+    returns (bytes32)
+    {
+        return users[user].preimage;
     }
 
     function getCheckpointIndex(address user)

@@ -91,13 +91,25 @@ describe("XCC", function() {
     });
      
     it("Should reveal a user's hashlock and validate", async function() {
+        await expect(xcc.validateHashlockPreimage(addr0._address, data.preimages[0]))
+            .to.emit(xcc, "HashlockReveal")
+            .withArgs(addr0._address, 0, data.preimages[0]);
+        expect(await xcc.getRevealedPreimageOf(addr0._address)).to.equal(data.preimages[0]);
     });
      
     it("Should transfer funds to a second user", async function() {
+        await xcc.connect(addr2).registerUser(data.alicePubkey, addr1._address, 4, []);
+        //    function transfer(address recipient, uint amount)
+        await expect(xcc.transfer(addr2._address, 1000000000))
+            .to.emit(xcc, "Transfer")
+            .withArgs(addr0._address, addr2._address, 1000000000);
+        expect(await xcc.balanceOf(addr0._address)).to.equal(1499000000 );
+        expect(await xcc.balanceOf(addr2._address)).to.equal(1000000000);
     });
 
     it("Should validate a checkpoint", async function() {
-        // validate: released vault collateral, reset preimage, advanced hash, reset recovery signature, increment checkpoint index
+        // TODO
+        // validate: released vault collateral, reset preimage, reset recovery signature, update prev checkpoint id, reset increment checkpoint index
     });
      
     it("Should burn tokens", async function() {
