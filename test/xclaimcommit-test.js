@@ -107,15 +107,15 @@ describe("XCC", function() {
         expect(await xcc.balanceOf(addr2._address)).to.equal(1000000000);
     });
 
-    it("Should validate a checkpoint", async function() {
+    it("TODO: Should validate a checkpoint", async function() {
         // TODO
         // validate: released vault collateral, reset preimage, reset recovery signature, update prev checkpoint id, reset increment checkpoint index
     });
      
-    it("Should burn tokens", async function() {
+    it("TODO: Should burn tokens", async function() {
     });
 
-    it("Should validate a redeem transaction", async function() {
+    it("TODO: Should validate a redeem transaction", async function() {
         // collateralise
         // redeem
         // check collateral is released
