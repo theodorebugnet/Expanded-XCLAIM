@@ -1,5 +1,8 @@
 //SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity >= 0.5.10 < 0.7.0;
+pragma experimental ABIEncoderV2;
+
+import "@nomiclabs/buidler/console.sol";
 
 import {Relay} from '@interlay/btc-relay-sol/contracts/Relay.sol';
 import {BTCUtils} from '@interlay/bitcoin-spv-sol/contracts/BTCUtils.sol';
@@ -15,13 +18,13 @@ contract XclaimCommit {
     event UserRegistration(
         address indexed addr,
         address indexed vault,
-        bytes20 btcaddr
+        bytes32 btcKey
     );
 
     /// Notifies of a new vault being registered.
     event VaultRegistration(
         address indexed addr,
-        bytes20 btcaddr
+        bytes32 btcKey
     );
 
     /// Fired on every change of any of a user's saved hashlocks digests (including setting new ones).
@@ -29,6 +32,11 @@ contract XclaimCommit {
         address indexed addr,
         uint indexed checkpointIndex,
         bytes32 hash
+    );
+
+    event UserFrequencyChange(
+        address indexed user,
+        uint16 newFreq
     );
 
     /// Fired on user funds having collateral set.
@@ -50,6 +58,12 @@ contract XclaimCommit {
         uint round
     );
 
+    event Transfer(
+        address indexed from,
+        address indexed to,
+        uint amount
+    );
+
     address public owner;
 
     ExchangeOracle exchangeOracle;
@@ -65,7 +79,7 @@ contract XclaimCommit {
     uint public totalSupply;
 
     struct User {
-        bytes20 btcAddress;
+        bytes32 btcKey;
         uint balance;
         uint collateralisation;
         uint16 frequency;
@@ -80,7 +94,7 @@ contract XclaimCommit {
     }
 
     struct Vault {
-        bytes20 btcAddress;
+        bytes32 btcKey;
         uint freeCollateral;
     }
 
@@ -118,22 +132,27 @@ contract XclaimCommit {
 
     /// Revert if an address does not match any registered vault.
     modifier vaultExists(address vault) {
-        require(vaults[vault].btcAddress != 0x0, "No such vault exists");
+        require(vaults[vault].btcKey != 0x0, "No such vault exists");
         _;
     }
 
-    /// Ensures that the user is able to carry out normal operations, e.g. trading,
+    /// Checks whether the user is able to carry out normal operations, e.g. trading,
     /// which are suspended when a round is over until the round's checkpoint is verified.
     /// Users are of course only affected by rounds where they are scheduled for a checkpoint.
     modifier userNotDueForCheckpoint(address user) {
-        if (users[msg.sender].nextRoundDue < round) {
-            // should not be possible
-            revert("User state inconsistent");
-        }
-        if (users[msg.sender].nextRoundDue == round) { // due at the end of this round
+        if (users[msg.sender].nextRoundDue <= round) { // due at the end of this round, or overdue
             if (block.timestamp >= roundDueAt) { // ...and the round is over
                 revert("User is due for a checkpoint, unable to proceed");
             }
+        }
+        _;
+    }
+
+    /// Increments round if 
+    modifier roundScheduler() {
+        if (block.timestamp >= roundDueAt) {
+            ++round;
+            roundDueAt += roundLength;
         }
         _;
     }
@@ -143,15 +162,18 @@ contract XclaimCommit {
     /// Creates a new user, registered to a given vault (which must exist), and optionally sets
     /// hashes to use for future hashlocks
     /// **Called by:** the user registering
-    function registerUser(bytes20 btcaddr, address vaultaddr, uint16 frequency, bytes32[] memory hashes)
+    function registerUser(bytes32 btcKey, address vaultaddr, uint16 frequency, bytes32[] memory hashes)
     public
+    roundScheduler
     vaultExists(vaultaddr)
     {
-        emit UserRegistration(msg.sender, vaultaddr, btcaddr);
+        require (users[msg.sender].btcKey == 0x0, "User already exists.");
+
+        emit UserRegistration(msg.sender, vaultaddr, btcKey);
 
         // init core values, leaving the rest default
         User memory newUser;
-        newUser.btcAddress = btcaddr;
+        newUser.btcKey = btcKey;
         newUser.vault = vaultaddr;
         newUser.frequency = frequency;
         newUser.checkpointIndex = 0;
@@ -171,6 +193,7 @@ contract XclaimCommit {
     /// @param checkpoints a list of checkpoint indices, corresponding 1:1 to the element hash at the same array location. They denote a user's checkpoint counter (with user.checkpointIndex being the next one that will be used).
     function updateHashlist(bytes32[] memory hashes, uint[] memory checkpoints)
     public
+    roundScheduler
     {
         require(hashes.length == checkpoints.length, "Number of indices must match number of hashes");
         for (uint i = 0; i < hashes.length; i++) {
@@ -187,7 +210,9 @@ contract XclaimCommit {
     /// **Called by:** the user
     function updateFrequency(uint16 newFreq)
     public
+    roundScheduler
     {
+        emit UserFrequencyChange(msg.sender, newFreq);
         users[msg.sender].frequency = newFreq;
     }
 
@@ -195,12 +220,13 @@ contract XclaimCommit {
     /// provide a useful list of vaults, interfaces may wish to sort by e.g. amount
     /// of collateral available in the vault's pool.
     /// **Called by:** the vault
-    function registerVault(bytes20 btcaddr)
+    function registerVault(bytes32 btcKey)
     public
+    roundScheduler
     {
-        emit VaultRegistration(msg.sender, btcaddr);
+        emit VaultRegistration(msg.sender, btcKey);
         vaults[msg.sender] = Vault({
-            btcAddress: btcaddr,
+            btcKey: btcKey,
             freeCollateral: 0
         });
     }
@@ -212,6 +238,7 @@ contract XclaimCommit {
     /// **Called by:** the vault
     function topUpCollateralPool()
     payable public
+    roundScheduler
     {
         vaults[msg.sender].freeCollateral += msg.value;
     }
@@ -220,6 +247,7 @@ contract XclaimCommit {
     /// **Called by:** the vault
     function drainCollateralPool(uint amount)
     public
+    roundScheduler
     {
         require(amount < vaults[msg.sender].freeCollateral, "Insufficient free collateral to fulfill drain request");
         vaults[msg.sender].freeCollateral -= amount;
@@ -235,6 +263,7 @@ contract XclaimCommit {
     /// **Called by:** the vault
     function lockCollateral(address user, uint amount)
     payable public
+    roundScheduler
     vaultHasUser(msg.sender, user)
     {
         vaults[msg.sender].freeCollateral += msg.value;
@@ -245,11 +274,13 @@ contract XclaimCommit {
         require(vaults[msg.sender].freeCollateral >= amount, "Insufficient free collateral to fulfill lock request");
         users[user].collateralisation += amount;
         vaults[msg.sender].freeCollateral -= amount;
+        emit UserCollateralised(user, amount);
     }
 
     /// Helper function used to unlock vault collateral locked against a user.
     function releaseCollateral(address vault, address user, uint amount)
     internal
+    roundScheduler
     vaultHasUser(vault, user)
     {
         if (amount > users[user].collateralisation) {
@@ -268,9 +299,10 @@ contract XclaimCommit {
     /// @return the ID of this redeem request (to be used later to release vault collateral or reimburse the user)
     function burnTokens(uint btcAmount)
     public
+    roundScheduler
     returns (uint)
     {
-        require(exchangeOracle.btcToEth(btcAmount) <= users[msg.sender].balance, "Burn request exceeds account balance");
+        require(btcAmount <= users[msg.sender].balance, "Burn request exceeds account balance");
         users[msg.sender].balance -= btcAmount;
         totalSupply -= btcAmount;
         redeemRequests[++redeemUid] = RedeemRequest({ user: msg.sender, amount: btcAmount });
@@ -282,6 +314,7 @@ contract XclaimCommit {
     /// burning a corresponding amount of user tokens.
     function reimburse(address user, uint btcAmount)
     internal
+    roundScheduler
     {
         uint ethAmount = exchangeOracle.btcToEth(btcAmount);
         require(ethAmount <= users[user].collateralisation, "Insufficient collateral to reimburse");
@@ -289,6 +322,18 @@ contract XclaimCommit {
         users[user].collateralisation -= ethAmount;
         (bool success, ) = user.call{value: ethAmount}("");
         require(success, "Transfer to user failed.");
+    }
+
+    function transfer(address recipient, uint amount)
+    public
+    roundScheduler
+    userNotDueForCheckpoint(msg.sender)
+    {
+        //require(users[msg.sender].preimage != 0x0, "Must reveal hashlock preimage before initiating Transfer.");
+        require(users[msg.sender].balance >= amount, "Insufficient balance to cover transfer.");
+        require(users[recipient].btcKey != 0x0, "Recipient is not registered."); //TODO - auto-register recipient with default values
+        users[msg.sender].balance -= amount;
+        users[recipient].balance += amount;
     }
 
     /// Given a valid Issue transaction on BTC, credits the user with the corresponding amount
@@ -315,7 +360,10 @@ contract XclaimCommit {
         bytes memory merkleProof
     )
     public
+    roundScheduler
     {
+        require(users[msg.sender].btcKey != 0x0, "User does not exist.");
+
         // get txId, check the transaction has been verified
         // to exist on BTC, and check it's not a replay
         bytes32 txId = btcLockingTx.hash256();
@@ -327,8 +375,8 @@ contract XclaimCommit {
             btcLockingTx,
             witnessScript,
             outputIndex,
-            users[msg.sender].btcAddress,
-            vaults[users[msg.sender].vault].btcAddress,
+            users[msg.sender].btcKey,
+            vaults[users[msg.sender].vault].btcKey,
             roundDueAt + users[msg.sender].frequency * roundLength // when should the next checkpoint be?
         );
         users[msg.sender].balance += outputVal;
@@ -355,6 +403,7 @@ contract XclaimCommit {
         bytes memory merkleProof
     )
     public
+    roundScheduler
     {
         address user = redeemRequests[redeemId].user;
 
@@ -367,9 +416,9 @@ contract XclaimCommit {
         uint outputVal = validator.checkRedeemTx(
             btcLockingTx,
             outputIndex,
-            users[user].btcAddress
+            users[user].btcKey
         );
-        require (outputVal >= redeemRequests[redeemId].amount, "Incorrect output value for redeem request"); //todo - support partial redeems?
+        require (outputVal >= redeemRequests[redeemId].amount, "Insufficient output value for redeem request"); //todo - support partial redeems?
         
         // add to replay protection
         usedTransactions[txId] = true;
@@ -380,18 +429,23 @@ contract XclaimCommit {
     /// Validates a checkpoint transaction. Releases collateral for involved users.
     /// Reimburses from collateral for any users for whom the vault misbehaved.
     /// @param checkpointTransaction the serialisation of the entire checkpoint tx
+    /// @param witnessScripts the witness scripts matching the P2WSH outputs in the checkpoint, in an order exactly corresponding to the transaction outputs order
+    /// @param recoverySignatures the signature data matching the recovery transactions for every output in the checkpoint, again in a matching order
     /// @param blockHeight etc. are all inclusion proof items (see Issue).
     function verifyCheckpoint(
         bytes memory checkpointTransaction,
+        bytes[] memory witnessScripts,
+        bytes[] memory recoverySignatures,
         uint32 blockHeight,
         uint256 txIndex,
         bytes memory blockHeader,
         bytes memory merkleProof
     )
     public
+    roundScheduler
     {
         // verify txId + inclusion
-        // (parltly in Validator) for each output:
+        // (partly in Validator) for each output:
         // - verify output + corresponding witnessScript like in Issue
         // - construct recovery TX + verify corresponding signature
         // - update user accounting: next checkpoint due, etc.; release collateral
@@ -417,4 +471,39 @@ contract XclaimCommit {
         return users[user].hashlist[users[user].checkpointIndex];
     }
 
+    function getHashAt(address user, uint checkpointIndex)
+    public view
+    returns (bytes32)
+    {
+        return users[user].hashlist[checkpointIndex];
+    }
+
+    function getCheckpointIndex(address user)
+    public view
+    returns (uint)
+    {
+        return users[user].checkpointIndex;
+    }
+
+    function getCollateralisationOf(address user)
+    public view
+    returns (uint)
+    {
+        return users[user].collateralisation;
+    }
+
+    function getFrequencyOf(address user)
+    public view
+    returns (uint16)
+    {
+        return users[user].frequency;
+    }
+
+    function checkCollateralPoolOf(address vault)
+    public view
+    vaultExists(vault)
+    returns (uint)
+    {
+        return vaults[vault].freeCollateral;
+    }
 }

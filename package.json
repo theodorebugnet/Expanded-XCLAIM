@@ -22,7 +22,7 @@
   "scripts": {
     "test": "buidler test",
     "docs": "solidity-docgen -t docs/templates",
-    "localdeploy": "buidler run scripts/roundclaim-deploy.js"
+    "localdeploy": "buidler run scripts/xclaimcommit-deploy.js"
   },
   "author": "",
   "license": "ISC"
