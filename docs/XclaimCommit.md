@@ -34,7 +34,7 @@ hashes to use for future hashlocks
 Updates the future hashes saved for the user, which can both add to the existing list
 or overwrite already set ones (e.g. if the user loses their preimages)
 
-*Called by:** the user updating their hashes
+**Called by:** the user updating their hashes
 
 #### Arguments:
 * hashes: a list of hashes to save
@@ -54,20 +54,20 @@ Registers a vault with the given BTC address. No commitment is required; to
 provide a useful list of vaults, interfaces may wish to sort by e.g. amount
 of collateral available in the vault's pool.
 
-*Called by:** the vault
+**Called by:** the vault
 
 
 ### `topUpCollateralPool()` (public)
 Allows the vault to deposit funds that can be used to collateralise
 (but which are not yet locked)
 
-*Called by:** the vault
+**Called by:** the vault
 
 
 ### `drainCollateralPool(uint256 amount)` (public)
 Allows the vault to withdraw unlocked collateral funds
 
-*Called by:** the vault
+**Called by:** the vault
 
 
 ### `lockCollateral(address user, uint256 amount)` (public)
@@ -76,7 +76,7 @@ in ETH (while the tokens are in BTC), hence the exchange rate oracle is used
 (the oracle is also responsible for any overcollateralisation which may be
 necessary over the short time a user is expected to be collateralised).
 
-*Called by:** the vault
+**Called by:** the vault
 
 
 ### `releaseCollateral(address vault, address user, uint256 amount)` (internal)
@@ -88,7 +88,7 @@ Destroys the amount of tokens requested by the users.
 User must then proceed with the appropriate steps to redeem or recover
 their backing funds.
 
-*Called by:** the user
+**Called by:** the user
 
 #### Returns:
 * the: ID of this redeem request (to be used later to release vault collateral or reimburse the user)
@@ -99,7 +99,15 @@ burning a corresponding amount of user tokens.
 
 
 ### `transfer(address recipient, uint256 amount)` (public)
+Transfers the specified amount of tokens from the caller's account to the recipient.
+This is only possible if the user has revealed their hashlock for this round (invalidating
+their recovery).
 
+**Called by:*** the user sending
+
+#### Arguments:
+* recipient: The recipient of the transfer
+* amount: The value of the transfer
 
 
 ### `issueTokens(bytes btcLockingTx, bytes witnessScript, uint64 outputIndex, uint32 blockHeight, uint256 txIndex, bytes blockHeader, bytes merkleProof)` (public)
@@ -110,16 +118,16 @@ validation of Recovery is left to the user, as they are the ones broadcasting th
 transaction and can refuse to do so until the vault signs the recovery; similarly,
 the hashlock is not validated.
 
-*Called by:** the user
+**Called by:** the user
 
 #### Arguments:
-* btcLockingTx: the full serialisation of the BTC transaction.
-* witnessScript: the script which matches the P2WSH output's hash in btcLockingTx
-* outputIndex: the exact output locking the backing coins for Issue
-* blockHeight: the transaction's block height
-* txIndex: the index of the transaction within its block (0-indexed)
-* blockHeader: the header of the transaction's block
-* merkleProof: the merkle proof of the transaction's inclusion it its block (intermediate hashes in the tree)
+* btcLockingTx: The full serialisation of the BTC transaction.
+* witnessScript: The script which matches the P2WSH output's hash in btcLockingTx
+* outputIndex: The exact output locking the backing coins for Issue
+* blockHeight: The transaction's block height
+* txIndex: The index of the transaction within its block (0-indexed)
+* blockHeader: The header of the transaction's block
+* merkleProof: The merkle proof of the transaction's inclusion it its block (intermediate hashes in the tree)
 
 
 ### `validateRedeem(uint256 redeemId, bytes btcLockingTx, uint64 outputIndex, uint32 blockHeight, uint256 txIndex, bytes blockHeader, bytes merkleProof)` (public)
@@ -127,15 +135,18 @@ Given a BTC transaction and the ID of a token burn, validates that the transacti
 corresponds to the user redeeming the backing funds of the burn request.
 Releases corresponding vault collateral if valid, if any.
 
-*Called by:** anyone, though usually the vault
+**Called by:** anyone, though usually the vault
 
 
 ### `validateHashlockPreimage(address user, bytes32 preimage) → bool` (public)
-Validates whether a given preimage corresponds to a user's next hashlock.
+Validates whether a given preimage corresponds to a user's next hashlock;
+if it does, store it.
+
+**Called by:*** anyone, but generally the user wishing to publicly reveal their hashlock
 
 #### Arguments:
-* user: the user to check
-* preimage: the claimed preimage for the haslock
+* user: The user to check
+* preimage: The claimed preimage for the haslock
 
 
 ### `verifyCheckpoint(bytes checkpointTransaction, bytes[] witnessScripts, bytes[] recoverySignatures, address[] usersIncluded, uint32 blockHeight, uint256 txIndex, bytes blockHeader, bytes merkleProof)` (public)

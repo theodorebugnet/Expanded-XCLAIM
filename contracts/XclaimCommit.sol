@@ -205,7 +205,7 @@ contract XclaimCommit {
 
     /// Updates the future hashes saved for the user, which can both add to the existing list
     /// or overwrite already set ones (e.g. if the user loses their preimages)
-    ///  **Called by:** the user updating their hashes
+    /// ***Called by:** the user updating their hashes
     /// @param hashes a list of hashes to save
     /// @param checkpoints a list of checkpoint indices, corresponding 1:1 to the element hash at the same array location. They denote a user's checkpoint counter (with user.checkpointIndex being the next one that will be used).
     function updateHashlist(bytes32[] memory hashes, uint[] memory checkpoints)
@@ -224,7 +224,7 @@ contract XclaimCommit {
     /// Allows the user to change their checkpoint frequency. Does not validate with
     /// the vault - negotiations will happen off-chain (the vault can always refuse service
     /// in the event of a dispute).
-    ///  ***Called by:** the user
+    /// ***Called by:** the user
     function updateFrequency(uint16 newFreq)
     public
     roundScheduler
@@ -236,7 +236,7 @@ contract XclaimCommit {
     /// Registers a vault with the given BTC address. No commitment is required; to
     /// provide a useful list of vaults, interfaces may wish to sort by e.g. amount
     /// of collateral available in the vault's pool.
-    /// **Called by:** the vault
+    /// ***Called by:** the vault
     function registerVault(bytes32 btcKey)
     public
     roundScheduler
@@ -252,7 +252,7 @@ contract XclaimCommit {
 
     /// Allows the vault to deposit funds that can be used to collateralise
     /// (but which are not yet locked)
-    /// **Called by:** the vault
+    /// ***Called by:** the vault
     function topUpCollateralPool()
     payable public
     roundScheduler
@@ -261,7 +261,7 @@ contract XclaimCommit {
     }
 
     /// Allows the vault to withdraw unlocked collateral funds
-    /// **Called by:** the vault
+    /// ***Called by:** the vault
     function drainCollateralPool(uint amount)
     public
     roundScheduler
@@ -277,7 +277,7 @@ contract XclaimCommit {
     /// in ETH (while the tokens are in BTC), hence the exchange rate oracle is used
     /// (the oracle is also responsible for any overcollateralisation which may be
     /// necessary over the short time a user is expected to be collateralised).
-    /// **Called by:** the vault
+    /// ***Called by:** the vault
     function lockCollateral(address user, uint amount)
     payable public
     roundScheduler
@@ -312,7 +312,7 @@ contract XclaimCommit {
     /// Destroys the amount of tokens requested by the users.
     /// User must then proceed with the appropriate steps to redeem or recover
     /// their backing funds.
-    /// **Called by:** the user
+    /// ***Called by:** the user
     /// @return the ID of this redeem request (to be used later to release vault collateral or reimburse the user)
     function burnTokens(uint btcAmount)
     public
@@ -341,6 +341,12 @@ contract XclaimCommit {
         require(success, "Transfer to user failed.");
     }
 
+    /// Transfers the specified amount of tokens from the caller's account to the recipient.
+    /// This is only possible if the user has revealed their hashlock for this round (invalidating
+    /// their recovery).
+    /// ***Called by:*** the user sending
+    /// @param recipient The recipient of the transfer
+    /// @param amount The value of the transfer
     function transfer(address recipient, uint amount)
     public
     roundScheduler
@@ -360,14 +366,14 @@ contract XclaimCommit {
     /// validation of Recovery is left to the user, as they are the ones broadcasting the
     /// transaction and can refuse to do so until the vault signs the recovery; similarly,
     /// the hashlock is not validated.
-    /// **Called by:** the user
-    /// @param btcLockingTx the full serialisation of the BTC transaction.
-    /// @param witnessScript the script which matches the P2WSH output's hash in btcLockingTx
-    /// @param outputIndex the exact output locking the backing coins for Issue
-    /// @param blockHeight the transaction's block height
-    /// @param txIndex the index of the transaction within its block (0-indexed)
-    /// @param blockHeader the header of the transaction's block
-    /// @param merkleProof the merkle proof of the transaction's inclusion it its block (intermediate hashes in the tree)
+    /// ***Called by:** the user
+    /// @param btcLockingTx The full serialisation of the BTC transaction.
+    /// @param witnessScript The script which matches the P2WSH output's hash in btcLockingTx
+    /// @param outputIndex The exact output locking the backing coins for Issue
+    /// @param blockHeight The transaction's block height
+    /// @param txIndex The index of the transaction within its block (0-indexed)
+    /// @param blockHeader The header of the transaction's block
+    /// @param merkleProof The merkle proof of the transaction's inclusion it its block (intermediate hashes in the tree)
     function issueTokens(
         bytes memory btcLockingTx,
         bytes memory witnessScript,
@@ -412,7 +418,7 @@ contract XclaimCommit {
     /// Given a BTC transaction and the ID of a token burn, validates that the transaction
     /// corresponds to the user redeeming the backing funds of the burn request.
     /// Releases corresponding vault collateral if valid, if any.
-    /// **Called by:** anyone, though usually the vault
+    /// ***Called by:** anyone, though usually the vault
     function validateRedeem(
         uint redeemId,
         bytes memory btcLockingTx,
@@ -446,9 +452,11 @@ contract XclaimCommit {
         releaseCollateral(users[user].vault, user, users[user].collateralisation);
     }
 
-    /// Validates whether a given preimage corresponds to a user's next hashlock.
-    /// @param user the user to check
-    /// @param preimage the claimed preimage for the haslock
+    /// Validates whether a given preimage corresponds to a user's next hashlock;
+    /// if it does, store it.
+    /// ***Called by:*** anyone, but generally the user wishing to publicly reveal their hashlock
+    /// @param user The user to check
+    /// @param preimage The claimed preimage for the haslock
     function validateHashlockPreimage(address user, bytes32 preimage)
     public
     returns (bool)

@@ -15,6 +15,7 @@ contract Validator {
     /// @param userBtcKey the user's public key on the BTC chain
     /// @param vaultBtcKey the vault's public key on the BTC chain
     /// @param userLocktime the value that the timelock should have, based on the round length and user checkpoint frequency
+    /// @return the value of the output
     function checkIssueTx(
         bytes memory btcLockingTx,
         bytes memory witnessScript,
@@ -48,7 +49,13 @@ contract Validator {
     }
 
     /// Checks the validity of the transaction's output script, to ensure the locking conditions
-    /// are correct
+    /// are correct, and returning the parameters used to lock the transaction. NOTE: scriptPubKey validation
+    /// is currently not implemented; only the (alleged) witnesscript is checked.
+    /// @param outputScript The P2WSH scriptPubKey of the transaction
+    /// @param witnessScript The witness script corresponding to the above P2WSH.
+    /// @return userBtc The user's BTC pubkey from the script
+    /// @return vaultBtc The vault's BTC pubkey from the script
+    /// @return timelock The time the vault spending is locked for, from the script
     function parseCheckpointOutputScript(
         bytes memory outputScript,
         bytes memory witnessScript
@@ -91,6 +98,12 @@ contract Validator {
         require(bytes2(witnessScript.slice(73 + timelockLen, 2).toBytes32()) == 0xb268, "Incorrect script");
     }
 
+    /// Validates the redeem transaction. Currently this is not fully implemented.
+    /// Should validate the P2WPK output to ensure it corresponds to the user's BTC key.
+    /// @param btcLockingTx The serialised transaction
+    /// @param outputIndex The output corresponding to the payout to the user
+    /// @param userBtcKey The BTC key of the user that the output should pay out to, to be valid.
+    /// @return The value of the output (if it was correct).
     function checkRedeemTx(
         bytes memory btcLockingTx,
         uint64 outputIndex,
@@ -113,6 +126,15 @@ contract Validator {
         return val;
     }
 
+    /// Validates the signature for a recovery transaction by the vault.
+    /// The recovery transaction is constructed using the known values for the user keys
+    /// and haslocks etc., then the provided signature is checked against it.
+    /// This is currently mock, and not implemented.
+    /// @param recSig the signature data
+    /// @param userHashlock the hashlock set by the user for the recovery HTLC
+    /// @param userBtc the user's BTC pubkey
+    /// @param vaultBtc the vault's BTC pubkey
+    /// @param checkpointTxid the TXID of the checkpoint transaction the user last participated in (to construct the input)
     function validateRecoverySig(
         bytes memory recSig,
         bytes32 userHashlock,
@@ -130,6 +152,13 @@ contract Validator {
         // revert if verification fails
     }
 
+    /// Helper function that extracts the outputs from a checkpoint transaction.
+    /// @param checkpointTransaction the serialised transaction
+    /// @param numWitnessScripts the number of witness scripts passed to the checkpoint validation (to assert they're equal to the number of outputs)
+    /// @param numRecSigs the number of recovery transaction signatures passed to checkpoint validation (as above)
+    /// @param numUsers the number of users the checkpoint is specified to have (as above)
+    /// @return outputs the serialised transaction outputs
+    /// @return numOut the number of outputs (which should be equal to numUsers etc.)
     function quickParseCheckpointTx(
         bytes memory checkpointTransaction,
         uint numWitnessScripts,
@@ -149,7 +178,15 @@ contract Validator {
     }
 
 
-    /// helper function in checkpoint validation
+    /// Helper function in checkpoint validation, containing checks for a variety of values.
+    /// @param outputs the serialised outputs of the checkpoint
+    /// @param i the index of the output being checked
+    /// @param witnessScript the witness script corresponding to the P2WSH output
+    /// @param userBalance the user's token balance (to validate the checkpoint output value)
+    /// @param userBTC the user's BTC pubkey
+    /// @param vaultBTC the vault's BTC pubkey
+    /// @param requiredTimelock the timelock value expected in the checkpoint for this user
+    /// @param timelockLeniency the allowed deviation in timelock duration
     function validateUserCheckpointValues(
         bytes memory outputs,
         uint i,
@@ -162,6 +199,8 @@ contract Validator {
     )
     public view
     {
+        //TODO: refactor this, as part of checkpoint validation refactor
+
         // get output itself, and verify value
         bytes memory output = Parser.extractOutputAtIndex(outputs, i);
 
