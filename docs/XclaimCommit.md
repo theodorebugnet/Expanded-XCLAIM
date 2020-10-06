@@ -13,7 +13,10 @@ which are suspended when a round is over until the round's checkpoint is verifie
 Users are of course only affected by rounds where they are scheduled for a checkpoint.
 
 ### `roundScheduler()`
-Increments round if 
+Increments round if previous round length has been exceeded.
+Due to ETH block times, rounds will vary +=10s to a minute, so rounds should
+be long enough for this to not matter. Frequent rounds give more flexibility
+for scheduling users, but are otherwise not necessary. ~1h per round is reasonable.
 
 
 ### `constructor(address relayAddr, address exchangeOracleAddr, address validatorAddr)` (public)
@@ -24,7 +27,7 @@ Initialises values, and sets addresses for auxilliary contracts
 Creates a new user, registered to a given vault (which must exist), and optionally sets
 hashes to use for future hashlocks
 
-*Called by:** the user registering
+**Called by:** the user registering
 
 
 ### `updateHashlist(bytes32[] hashes, uint256[] checkpoints)` (public)
@@ -33,7 +36,7 @@ or overwrite already set ones (e.g. if the user loses their preimages)
 
 *Called by:** the user updating their hashes
 
-####Arguments:
+#### Arguments:
 * hashes: a list of hashes to save
 * checkpoints: a list of checkpoint indices, corresponding 1:1 to the element hash at the same array location. They denote a user's checkpoint counter (with user.checkpointIndex being the next one that will be used).
 
@@ -43,7 +46,7 @@ Allows the user to change their checkpoint frequency. Does not validate with
 the vault - negotiations will happen off-chain (the vault can always refuse service
 in the event of a dispute).
 
-*Called by:** the user
+**Called by:** the user
 
 
 ### `registerVault(bytes32 btcKey)` (public)
@@ -87,7 +90,7 @@ their backing funds.
 
 *Called by:** the user
 
-####Returns:
+#### Returns:
 * the: ID of this redeem request (to be used later to release vault collateral or reimburse the user)
 
 ### `reimburse(address user, uint256 btcAmount)` (internal)
@@ -109,7 +112,7 @@ the hashlock is not validated.
 
 *Called by:** the user
 
-####Arguments:
+#### Arguments:
 * btcLockingTx: the full serialisation of the BTC transaction.
 * witnessScript: the script which matches the P2WSH output's hash in btcLockingTx
 * outputIndex: the exact output locking the backing coins for Issue
@@ -130,7 +133,7 @@ Releases corresponding vault collateral if valid, if any.
 ### `validateHashlockPreimage(address user, bytes32 preimage) → bool` (public)
 Validates whether a given preimage corresponds to a user's next hashlock.
 
-####Arguments:
+#### Arguments:
 * user: the user to check
 * preimage: the claimed preimage for the haslock
 
@@ -139,7 +142,7 @@ Validates whether a given preimage corresponds to a user's next hashlock.
 Validates a checkpoint transaction. Releases collateral for involved users.
 Reimburses from collateral for any users for whom the vault misbehaved.
 
-####Arguments:
+#### Arguments:
 * checkpointTransaction: the serialisation of the entire checkpoint tx
 * witnessScripts: the witness scripts matching the P2WSH outputs in the checkpoint, in an order exactly corresponding to the transaction outputs order
 * recoverySignatures: the signature data matching the recovery transactions for every output in the checkpoint, again in a matching order
@@ -189,7 +192,7 @@ Notifies of a new vault being registered.
 Fired on every change of any of a user's saved hashlocks digests (including setting new ones).
 
 ### `UserFrequencyChange(address user, uint16 newFreq)`
-
+Fired when a user updates their checkpoint frequency preference
 
 ### `UserCollateralised(address addr, uint256 amount)`
 Fired on user funds having collateral set.

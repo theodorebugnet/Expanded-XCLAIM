@@ -38,6 +38,7 @@ contract XclaimCommit {
         bytes32 hash
     );
 
+    /// Fired when a user updates their checkpoint frequency preference
     event UserFrequencyChange(
         address indexed user,
         uint16 newFreq
@@ -161,7 +162,10 @@ contract XclaimCommit {
         _;
     }
 
-    /// Increments round if 
+    /// Increments round if previous round length has been exceeded.
+    /// Due to ETH block times, rounds will vary +=10s to a minute, so rounds should
+    /// be long enough for this to not matter. Frequent rounds give more flexibility
+    /// for scheduling users, but are otherwise not necessary. ~1h per round is reasonable.
     modifier roundScheduler() {
         if (block.timestamp >= roundDueAt) {
             ++round;
@@ -174,7 +178,7 @@ contract XclaimCommit {
 
     /// Creates a new user, registered to a given vault (which must exist), and optionally sets
     /// hashes to use for future hashlocks
-    /// **Called by:** the user registering
+    /// ***Called by:** the user registering
     function registerUser(bytes32 btcKey, address vaultaddr, uint16 frequency, bytes32[] memory hashes)
     public
     roundScheduler
@@ -201,7 +205,7 @@ contract XclaimCommit {
 
     /// Updates the future hashes saved for the user, which can both add to the existing list
     /// or overwrite already set ones (e.g. if the user loses their preimages)
-    /// **Called by:** the user updating their hashes
+    ///  **Called by:** the user updating their hashes
     /// @param hashes a list of hashes to save
     /// @param checkpoints a list of checkpoint indices, corresponding 1:1 to the element hash at the same array location. They denote a user's checkpoint counter (with user.checkpointIndex being the next one that will be used).
     function updateHashlist(bytes32[] memory hashes, uint[] memory checkpoints)
@@ -220,7 +224,7 @@ contract XclaimCommit {
     /// Allows the user to change their checkpoint frequency. Does not validate with
     /// the vault - negotiations will happen off-chain (the vault can always refuse service
     /// in the event of a dispute).
-    /// **Called by:** the user
+    ///  ***Called by:** the user
     function updateFrequency(uint16 newFreq)
     public
     roundScheduler

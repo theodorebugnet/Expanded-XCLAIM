@@ -10,11 +10,11 @@
 {{#each ownFunctions}}
 ### `{{name}}({{args}}){{#if outputs}} → {{outputs}}{{/if}}` ({{visibility}})
 {{{natspec.userdoc}}}{{#if natspec.params}}
-####Arguments:
+#### Arguments:
 {{#each natspec.params}} 
 * {{{param}}}: {{{description}}}{{/each}}{{/if}}
 {{#if natspec.returns}}
-####Returns:
+#### Returns:
 {{#each natspec.returns}} 
 * {{{param}}}: {{{description}}}{{/each}}{{/if}}
 

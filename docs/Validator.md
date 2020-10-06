@@ -5,7 +5,7 @@
 ### `checkIssueTx(bytes btcLockingTx, bytes witnessScript, uint64 outputIndex, bytes32 userBtcKey, bytes32 vaultBtcKey, uint256 userLocktime) → uint256` (public)
 Validates the issue transaction, ensuring the output script is valid and extracting the amount issued.
 
-####Arguments:
+#### Arguments:
 * btcLockingTx: the full serialisation of the BTC transaction.
 * witnessScript: the script which matches the P2WSH output's hash in btcLockingTx
 * outputIndex: the exact output locking the backing coins for Issue
