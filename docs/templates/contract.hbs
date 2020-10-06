@@ -1,27 +1,33 @@
-## `{{name}}`
+# `{{name}}`
 {{{natspec.userdoc}}}
 
+# Modifiers
+
 {{#each ownModifiers}}
-### `{{name}}({{args}})`
+## `{{name}}({{args}})`
 {{{natspec.userdoc}}}
 
 {{/each}}
 
+# Functions
+
 {{#each ownFunctions}}
-### `{{name}}({{args}}){{#if outputs}} → {{outputs}}{{/if}}` ({{visibility}})
+## `{{name}}({{args}}){{#if outputs}} → {{outputs}}{{/if}}` ({{visibility}})
 {{{natspec.userdoc}}}{{#if natspec.params}}
-#### Arguments:
+### Arguments:
 {{#each natspec.params}} 
 * {{{param}}}: {{{description}}}{{/each}}{{/if}}
 {{#if natspec.returns}}
-#### Returns:
+### Returns:
 {{#each natspec.returns}} 
 * {{{param}}}: {{{description}}}{{/each}}{{/if}}
 
 {{/each}}
 
+# Events
+
 {{#each ownEvents}}
-### `{{name}}({{args}})`
+## `{{name}}({{args}})`
 {{{natspec.userdoc}}}
 
 {{/each}}
